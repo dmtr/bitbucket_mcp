@@ -1,0 +1,15 @@
+[project]
+name = "bitbucket-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "atlassian-python-api>=4.0.4",
+    "mcp[cli]>=1.9.2",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+]
