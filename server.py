@@ -163,6 +163,49 @@ class BitbucketCodeSearch:
 
         """
         return self._get_all_search_results(search_query, max_page)
+    
+    def search_repositories(self, search_query: str = None, sort: str = None, role: str = None, max_page: int = MAX_PAGE) -> List[Dict[str, Any]]:
+        """
+        Search repositories in the workspace.
+        
+        Args:
+            search_query: Optional query string to filter repositories (e.g., "name=foo")
+            sort: Optional sort parameter (e.g., "name" or "-created_on")
+            role: Optional filter by role (e.g., "admin", "contributor", "member")
+            max_page: Maximum number of pages to fetch
+            
+        Returns:
+            List of repository objects
+        """
+        all_results = []
+        page = 1
+        
+        while True:
+            params = {}
+            if search_query:
+                params["q"] = search_query
+            if sort:
+                params["sort"] = sort
+            if role:
+                params["role"] = role
+            if page > 1:
+                params["page"] = page
+                
+            logger.info("Fetching repositories page %s", page)
+            response = self.workspace.get("", params=params)
+            
+            if "values" in response:
+                all_results.extend(response["values"])
+                
+            if response.get("next") is None:
+                break
+                
+            page += 1
+            if page > max_page:
+                logger.warning("Reached maximum page limit of %s", max_page)
+                break
+                
+        return all_results
 
 
 mcp = FastMCP("BitbucketMCP")
@@ -199,6 +242,33 @@ def bitbucket_code_search(
     if not results:
         return "No results found."
 
+    return json.dumps(results)
+
+
+@mcp.tool()
+def bitbucket_repository_search(
+    search_query: str = None,
+    sort: str = None,
+    role: str = None,
+    max_page: int = MAX_PAGE,
+) -> str:
+    """
+    Search repositories in a Bitbucket workspace.
+    
+    Args:
+        search_query: Optional query string to filter repositories (e.g., "name=foo")
+        sort: Optional sort parameter (e.g., "name" or "-created_on")
+        role: Optional filter by role (e.g., "admin", "contributor", "member")
+        max_page: Maximum number of pages to fetch
+    Returns:
+        A string representation of the repositories in JSON format
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    results = bitbucket_tool.search_repositories(search_query, sort, role, max_page)
+    
+    if not results:
+        return "No repositories found."
+        
     return json.dumps(results)
 
 
