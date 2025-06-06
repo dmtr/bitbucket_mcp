@@ -312,6 +312,34 @@ class BitbucketCodeSearch:
                 break
                 
         return all_results
+        
+    def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
+        """
+        Get the raw content of a file from a repository.
+        
+        Args:
+            repo_slug: The slug of the repository containing the file
+            commit: The commit or branch name (e.g. "master", "develop", or a commit hash)
+            path: The path to the file within the repository
+        Returns:
+            The raw content of the file as a string
+        """
+        logger.info("Fetching file content for %s at %s in repository %s", path, commit, repo_slug)
+        
+        # Use advanced_mode to get the raw response instead of parsed JSON
+        response = self.client.get(
+            f"/repositories/{self.workspace_name}/{repo_slug}/src/{commit}/{path}",
+            headers={
+                "Accept": "*/*"  # Accept any content type
+            },
+            advanced_mode=True
+        )
+        
+        if response.status_code == 200:
+            return response.text
+        else:
+            logger.error("Failed to fetch file content: %s", response.text)
+            raise Exception(f"Failed to fetch file content: {response.status_code} - {response.text}")
 
 
 mcp = FastMCP("BitbucketMCP")
@@ -528,6 +556,37 @@ def bitbucket_get_commits(
         return "No commits found."
 
     return json.dumps(results)
+
+
+@mcp.prompt()
+def bitbucket_get_file_content_prompt() -> str:
+    return """This tool allows you to retrieve the raw content of a file from a Bitbucket repository.
+           You need to provide the repository slug, commit or branch name, and the file path.
+           The tool will return the raw content of the file as a string."""
+
+
+@mcp.tool()
+def bitbucket_get_file_content(
+    repo_slug: str,
+    commit: str,
+    path: str,
+) -> str:
+    """
+    Get the raw content of a file from a Bitbucket repository.
+
+    Args:
+        repo_slug: The slug of the repository containing the file
+        commit: The commit or branch name (e.g. "master", "develop", or a commit hash)
+        path: The path to the file within the repository
+    Returns:
+        The raw content of the file as a string
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    try:
+        content = bitbucket_tool.get_file_content(repo_slug, commit, path)
+        return content
+    except Exception as e:
+        return f"Error retrieving file content: {str(e)}"
 
 
 if __name__ == "__main__":
