@@ -211,6 +211,54 @@ class BitbucketCodeSearch:
 
         return all_results
 
+    def create_branch(self, repo_slug: str, branch_name: str) -> str:
+        """
+        Create a new branch in the specified repository.
+
+        Args:
+            repo_slug: The slug of the repository where the branch will be created
+        Returns:
+            A string indicating the success or failure of the branch creation
+            Response example:
+            {
+              "type": "<string>",
+              "links": {
+                "self": {
+                  "href": "<string>",
+                  "name": "<string>"
+                },
+                "commits": {
+                  "href": "<string>",
+                  "name": "<string>"
+                },
+                "html": {
+                  "href": "<string>",
+                  "name": "<string>"
+                }
+              },
+              "name": "<string>",
+              "target": {
+                "type": "<string>"
+              },
+              "merge_strategies": [
+                "merge_commit"
+              ],
+              "default_merge_strategy": "<string>"
+            }
+        """
+        result = self.client.post(
+            f"/repositories/{self.workspace_name}/{repo_slug}/refs/branches",
+            json={"name": branch_name, "target": {"hash": "master"}},
+            headers={
+                "Accept": "application/json",
+            },
+            advanced_mode=True,
+        )
+        if result.status_code == 201:
+            return json.dumps(result.json())
+        else:
+            return json.dumps({"error": "Failed to create branch", "status_code": result.status_code, "message": result.text})
+
 
 mcp = FastMCP("BitbucketMCP")
 
@@ -352,6 +400,22 @@ def bitbucket_get_repositories(
         return "No repositories found."
 
     return json.dumps(results)
+
+
+@mcp.tool()
+def bitbucket_create_branch(repo_slug: str, branch_name: str) -> str:
+    """
+    Create a new branch in a Bitbucket repository.
+
+    Args:
+        repo_slug: The slug of the repository where the branch will be created
+        branch_name: The name of the new branch to be created
+    Returns:
+        A string representation of the branch creation result in JSON format
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    result = bitbucket_tool.create_branch(repo_slug, branch_name)
+    return result
 
 
 if __name__ == "__main__":
