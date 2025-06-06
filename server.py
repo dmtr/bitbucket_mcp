@@ -258,6 +258,60 @@ class BitbucketCodeSearch:
             return json.dumps(result.json())
         else:
             return json.dumps({"error": "Failed to create branch", "status_code": result.status_code, "message": result.text})
+            
+    def get_commits(self, repo_slug: str, include: Optional[List[str]] = None, exclude: Optional[List[str]] = None, 
+                    path: Optional[str] = None, max_page: int = MAX_PAGE) -> List[Dict[str, Any]]:
+        """
+        Get a list of commits for the specified repository.
+        
+        Args:
+            repo_slug: The slug of the repository to get commits from
+            include: Optional list of refs to include (e.g. ["master", "feature-branch"])
+            exclude: Optional list of refs to exclude (e.g. ["dev"])
+            path: Optional file or directory path to filter commits by
+            max_page: Maximum number of pages to fetch
+        Returns:
+            List of commit objects
+        """
+        all_results = []
+        page = 1
+        
+        while True:
+            params = {"pagelen": 50}
+            
+            # Add include/exclude parameters if provided
+            if include:
+                for ref in include:
+                    params.setdefault("include", []).append(ref)
+            if exclude:
+                for ref in exclude:
+                    params.setdefault("exclude", []).append(ref)
+            
+            # Add path filter if provided
+            if path:
+                params["path"] = path
+                
+            if page > 1:
+                params["page"] = page
+                
+            logger.info("Fetching commits page %s for repository %s", page, repo_slug)
+            response = self.client.get(
+                f"/repositories/{self.workspace_name}/{repo_slug}/commits",
+                params=params,
+            )
+            
+            if "values" in response:
+                all_results.extend(response["values"])
+                
+            if response.get("next") is None:
+                break
+                
+            page += 1
+            if page > max_page:
+                logger.warning("Reached maximum page limit of %s", max_page)
+                break
+                
+        return all_results
 
 
 mcp = FastMCP("BitbucketMCP")
@@ -416,6 +470,64 @@ def bitbucket_create_branch(repo_slug: str, branch_name: str) -> str:
     bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
     result = bitbucket_tool.create_branch(repo_slug, branch_name)
     return result
+
+
+@mcp.prompt()
+def bitbucket_get_commits_prompt() -> str:
+    return """This tool allows you to retrieve a list of commits from a Bitbucket repository.
+           You can filter commits by including or excluding specific refs, and by specifying a file or directory path.
+           The results will be returned in JSON format.
+           Response example:
+           [
+                {
+                  "type": "commit",
+                  "hash": "<string>",
+                  "date": "<string>",
+                  "author": {
+                    "type": "author",
+                    "raw": "<string>",
+                    "user": {
+                      "type": "user"
+                    }
+                  },
+                  "message": "<string>",
+                  "summary": {
+                    "raw": "<string>",
+                    "markup": "markdown",
+                    "html": "<string>"
+                  },
+                  "parents": []
+                }
+           ]"""
+
+
+@mcp.tool()
+def bitbucket_get_commits(
+    repo_slug: str,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+    path: Optional[str] = None,
+    max_page: int = MAX_PAGE,
+) -> str:
+    """
+    Get a list of commits from a Bitbucket repository.
+
+    Args:
+        repo_slug: The slug of the repository to get commits from
+        include: Optional list of refs to include (e.g. ["master", "feature-branch"])
+        exclude: Optional list of refs to exclude (e.g. ["dev"])
+        path: Optional file or directory path to filter commits by
+        max_page: Maximum number of pages to fetch
+    Returns:
+        A string representation of the commits in JSON format
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    results = bitbucket_tool.get_commits(repo_slug, include, exclude, path, max_page)
+
+    if not results:
+        return "No commits found."
+
+    return json.dumps(results)
 
 
 if __name__ == "__main__":
