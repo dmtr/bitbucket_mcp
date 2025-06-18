@@ -1,7 +1,9 @@
 # server.py
+import argparse
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from atlassian.bitbucket.cloud import Cloud
@@ -23,13 +25,95 @@ Single characters within search terms are ignored as they’re not indexed by Bi
 Case is not preserved, however search operators must be in ALL CAPS.
 Queries cannot have more than 9 expressions (e.g. combinations of terms and operators).
 To specify a programming language, use the `lang:` operator followed by the language name (e.g. `lang:python`), so if the query is "my_function lang:python", it will search for the term "def my_function" in Python files.
-To specify a project use  project: operator followed by the project name (e.g. `project:my_project`), so if the query is "my_function project:my_project", it will search for the term "def my_function" in files of the specified project.
+Bitbucket can group repositories by projects. To specify a project use project: operator followed by the project name (e.g. `project:my_project`), so if the query is "my_function project:my_project", it will search for the term "def my_function" in files of the specified project.
 """
 
 APP_USERNAME = os.environ.get("APP_USERNAME", "")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 
 MAX_PAGE = 100  # Maximum number of pages to fetch for search results
+
+
+def mask_credentials(text: str, full_scan=True) -> str:
+    """
+    Mask sensitive credentials in a string.
+
+    This function identifies and masks:
+    - MongoDB connection strings
+    - API tokens/keys
+    - API secrets
+    - Passwords
+
+    Args:
+        text: The string that might contain credentials
+
+    Returns:
+        The string with credentials masked by asterisks
+    """
+
+    # MongoDB connection strings
+    # Format: mongodb://[username:password@]host[:port][/database]
+    text = re.sub(r"(mongodb://[^:]+:)([^@]+)(@[^/\s]+)", r"\1********\3", text)
+
+    # API keys, tokens, and secrets in YAML format
+    # Look for common patterns like api_key: "value", token: "value", etc.
+    patterns = [
+        # YAML patterns - match only when the key is exactly these sensitive terms
+        r'(\bapi[_\-]?key\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bapi[_\-]?secret\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bapi[_\-]?token\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\baccess[_\-]?token\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bauth[_\-]?token\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bpassword\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bsecret[_\-]?key\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\bcredentials\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        r'(\baudience\b[_\-\s]?[:=]\s*["\'])([^"\']+)(["\'])',
+        # Python assignment patterns - match only when the key is exactly these sensitive terms
+        r'(\bapi[_\-]?key\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bapi[_\-]?secret\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bapi[_\-]?token\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\baccess[_\-]?token\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bauth[_\-]?token\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bpassword\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bsecret[_\-]?key\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\bcredentials\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+        r'(\baudience\b[_\-\s]?\s*=\s*["\'])([^"\']+)(["\'])',
+    ]
+
+    for pattern in patterns:
+        text = re.sub(pattern, r"\1********\3", text)
+
+    # JWT tokens (typically longer base64 strings)
+    text = re.sub(r"(eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,})", r"********", text)
+
+    # Username:password@domain pattern (common in credentials)
+    # This handles both standalone credentials and URLs with protocols like amqp://
+    text = re.sub(r"(?:(?:[a-zA-Z]+://)?([A-Za-z0-9\-]+:[A-Za-z0-9\-]+@[A-Za-z0-9\-\.]+(?:/[A-Za-z0-9\-]+)*))", r"********", text)
+
+    # UUID pattern (common for client IDs, audience values, etc.)
+    text = re.sub(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", r"********", text, flags=re.IGNORECASE)
+
+    # Mask any string containing b2clogin (Azure B2C login URLs)
+    text = re.sub(r'([^\s"\']*b2clogin[^\s"\']*)', r"********", text, flags=re.IGNORECASE)
+
+    if not full_scan:
+        return text
+
+    # Secret strings with special characters (passwords, API keys, etc.)
+    text = re.sub(
+        r"(?<![:/\w])([A-Za-z0-9+/~\.\-_]{16,})(?![:/\w])",
+        "********",
+        text,
+    )
+
+    # AWS-style keys (alphanumeric with fixed length)
+    text = re.sub(
+        r"(?<![:/\w])([A-Za-z0-9+/]{20,})(?![:/\w])",
+        "********",
+        text,
+    )
+
+    return text
 
 
 class BitbucketCodeSearch:
@@ -53,7 +137,7 @@ class BitbucketCodeSearch:
         )
         self.workspace = self.client.workspaces.get(workspace_name)
 
-    def _get_all_search_results(self, search_query: str, max_page: int = MAX_PAGE) -> List[dict]:
+    def _get_all_search_results(self, search_query: str, page: int = 1, pagelen: int = 50) -> List[dict]:
         """
         Fetch all search results across multiple pages.
 
@@ -63,31 +147,20 @@ class BitbucketCodeSearch:
         Returns:
             List of all search result values
         """
-        all_results = []
-        page = 1
 
-        while True:
-            params = {"search_query": search_query}
-            if page > 1:
-                params["page"] = page
+        params = {"search_query": search_query}
+        params["page"] = page
+        params["pagelen"] = pagelen
 
-            logger.info("Fetching page %s", page)
-            response = self.workspace.get("/search/code", params=params)
+        logger.info("Fetching page %s", page)
+        response = self.workspace.get("/search/code", params=params)
 
-            if "values" in response:
-                all_results.extend(response["values"])
+        if "values" in response:
+            return response["values"]
 
-            if response.get("next") is None:
-                break
+        return []  # Return an empty list if no values found or if the response is not as expected
 
-            page += 1
-            if page > max_page:
-                logger.warning("Reached maximum page limit of %s", max_page)
-                break
-
-        return all_results
-
-    def get_raw_matches(self, search_query: str, max_page: int = MAX_PAGE) -> List[Dict[str, Any]]:
+    def get_raw_matches(self, search_query: str, page: int = 1, pagelen: int = 50) -> List[Dict[str, Any]]:
         """
         Get matches for the search query.
 
@@ -162,10 +235,25 @@ class BitbucketCodeSearch:
               ]
 
         """
-        return self._get_all_search_results(search_query, max_page)
+        results = self._get_all_search_results(search_query, page, pagelen)
+
+        for result in results:
+            if result.get("type") == "code_search_result":
+                content_matches = result.get("content_matches", [])
+                for match in content_matches:
+                    lines = match.get("lines", [])
+                    for line_info in lines:
+                        segments = line_info.get("segments", [])
+                        for segment in segments:
+                            if "text" in segment:
+                                file_path = result["file"]["path"]
+                                full_scan = True if (file_path.endswith(".yaml") or file_path.endswith(".yml")) else False
+                                segment["text"] = mask_credentials(segment["text"], full_scan=full_scan)
+
+        return results
 
     def get_repositories_list(
-        self, search_query: Optional[str] = None, sort: Optional[str] = None, role: Optional[str] = None, max_page: int = MAX_PAGE
+        self, search_query: Optional[str] = None, sort: Optional[str] = None, role: Optional[str] = None, page: int = 1, pagelen: int = 50
     ) -> List[Dict[str, Any]]:
         """
         Search repositories in the workspace.
@@ -174,42 +262,29 @@ class BitbucketCodeSearch:
             search_query: Optional query string to filter repositories (e.g., "name=foo")
             sort: Optional sort parameter (e.g., "name" or "-created_on")
             role: Optional filter by role (e.g., "admin", "contributor", "member")
-            max_page: Maximum number of pages to fetch
-
+            page: Number of the page to fetch
+            pagelen: Number of items per page (default is 50)
         Returns:
             List of repository objects
         """
-        all_results = []
-        page = 1
 
-        while True:
-            params = {"pagelen": 50}
-            params["q"] = search_query or ""
-            if sort:
-                params["sort"] = sort
-            if role:
-                params["role"] = role
-            if page > 1:
-                params["page"] = page
+        params = {"pagelen": pagelen, "page:": page}
+        params["q"] = search_query or ""
+        if sort:
+            params["sort"] = sort
+        if role:
+            params["role"] = role
 
-            logger.info("Fetching repositories page %s", page)
-            response = self.client.get(
-                f"/repositories/{self.workspace_name}",
-                params=params,
-            )
+        logger.info("Fetching repositories page %s", page)
+        response = self.client.get(
+            f"/repositories/{self.workspace_name}",
+            params=params,
+        )
 
-            if "values" in response:
-                all_results.extend(response["values"])
+        if "values" in response:
+            return response["values"]
 
-            if response.get("next") is None:
-                break
-
-            page += 1
-            if page > max_page:
-                logger.warning("Reached maximum page limit of %s", max_page)
-                break
-
-        return all_results
+        return []  # Return an empty list if no values found or if the response is not as expected
 
     def create_branch(self, repo_slug: str, branch_name: str) -> str:
         """
@@ -258,12 +333,13 @@ class BitbucketCodeSearch:
             return json.dumps(result.json())
         else:
             return json.dumps({"error": "Failed to create branch", "status_code": result.status_code, "message": result.text})
-            
-    def get_commits(self, repo_slug: str, include: Optional[List[str]] = None, exclude: Optional[List[str]] = None, 
-                    path: Optional[str] = None, max_page: int = MAX_PAGE) -> List[Dict[str, Any]]:
+
+    def get_commits(
+        self, repo_slug: str, include: Optional[List[str]] = None, exclude: Optional[List[str]] = None, path: Optional[str] = None, max_page: int = MAX_PAGE
+    ) -> List[Dict[str, Any]]:
         """
         Get a list of commits for the specified repository.
-        
+
         Args:
             repo_slug: The slug of the repository to get commits from
             include: Optional list of refs to include (e.g. ["master", "feature-branch"])
@@ -275,10 +351,10 @@ class BitbucketCodeSearch:
         """
         all_results = []
         page = 1
-        
+
         while True:
             params = {"pagelen": 50}
-            
+
             # Add include/exclude parameters if provided
             if include:
                 for ref in include:
@@ -286,37 +362,37 @@ class BitbucketCodeSearch:
             if exclude:
                 for ref in exclude:
                     params.setdefault("exclude", []).append(ref)
-            
+
             # Add path filter if provided
             if path:
                 params["path"] = path
-                
+
             if page > 1:
                 params["page"] = page
-                
+
             logger.info("Fetching commits page %s for repository %s", page, repo_slug)
             response = self.client.get(
                 f"/repositories/{self.workspace_name}/{repo_slug}/commits",
                 params=params,
             )
-            
+
             if "values" in response:
                 all_results.extend(response["values"])
-                
+
             if response.get("next") is None:
                 break
-                
+
             page += 1
             if page > max_page:
                 logger.warning("Reached maximum page limit of %s", max_page)
                 break
-                
+
         return all_results
-        
+
     def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
         """
         Get the raw content of a file from a repository.
-        
+
         Args:
             repo_slug: The slug of the repository containing the file
             commit: The commit or branch name (e.g. "master", "develop", or a commit hash)
@@ -325,16 +401,12 @@ class BitbucketCodeSearch:
             The raw content of the file as a string
         """
         logger.info("Fetching file content for %s at %s in repository %s", path, commit, repo_slug)
-        
+
         # Use advanced_mode to get the raw response instead of parsed JSON
         response = self.client.get(
-            f"/repositories/{self.workspace_name}/{repo_slug}/src/{commit}/{path}",
-            headers={
-                "Accept": "*/*"  # Accept any content type
-            },
-            advanced_mode=True
+            f"/repositories/{self.workspace_name}/{repo_slug}/src/{commit}/{path}", headers={"Accept": "*/*"}, advanced_mode=True  # Accept any content type
         )
-        
+
         if response.status_code == 200:
             return response.text
         else:
@@ -359,19 +431,21 @@ def bitbucket_code_search_prompt() -> str:
 @mcp.tool()
 def bitbucket_code_search(
     search_query: str,
-    max_page: int = MAX_PAGE,
+    page: int = 1,
+    pagelen: int = 50,
 ) -> str:
     """
     Perform a code search in Bitbucket.
 
     Args:
         search_query: The search query string
-        max_page: Maximum number of pages to fetch for search results
+        page: number of the page to fetch
+        pagelen: number of items per page (default is 50)
     Returns:
         A string representation of the search results in JSON format
     """
     bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
-    results = bitbucket_tool.get_raw_matches(search_query, max_page)
+    results = bitbucket_tool.get_raw_matches(search_query, page, pagelen)
 
     if not results:
         return "No results found."
@@ -462,7 +536,8 @@ def bitbucket_get_repositories(
     search_query: Optional[str] = None,
     sort: Optional[str] = None,
     role: Optional[str] = None,
-    max_page: int = MAX_PAGE,
+    page: int = 1,
+    pagelen: int = 50,
 ) -> str:
     """
     Get list of repositories in a Bitbucket workspace.
@@ -471,12 +546,14 @@ def bitbucket_get_repositories(
         search_query: Optional query string to filter repositories (e.g. 'name ~ "reportal-reports"')
         sort: Optional sort parameter (e.g., "-updated_on" or "-created_on")
         role: Optional filter by role (e.g., "admin", "contributor", "member")
-        max_page: Maximum number of pages to fetch
+        page: Number of the page to fetch
+        pagelen: Number of items per page (default is 50)
+
     Returns:
         A string representation of the repositories in JSON format
     """
     bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
-    results = bitbucket_tool.get_repositories_list(search_query, sort, role, max_page)
+    results = bitbucket_tool.get_repositories_list(search_query, sort, role, page, pagelen)
 
     if not results:
         return "No repositories found."
@@ -584,11 +661,18 @@ def bitbucket_get_file_content(
     bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
     try:
         content = bitbucket_tool.get_file_content(repo_slug, commit, path)
+        full_scan = True if (path.endswith(".yaml") or path.endswith(".yml")) else False
+        content = mask_credentials(content, full_scan=full_scan)
         return content
     except Exception as e:
         return f"Error retrieving file content: {str(e)}"
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    mcp.run(transport="streamable-http")
+    parser = argparse.ArgumentParser(description="Run Bitbucket MCP server")
+    parser.add_argument("--transport", type=str, default="sse", choices=["streamable-http", "sse", "stdio"], help="Transport method for the server")
+    parser.add_argument("--log_level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s - %(levelname)s - %(message)s")
+    mcp.run(transport=args.transport)
