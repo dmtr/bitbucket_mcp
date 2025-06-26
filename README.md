@@ -32,7 +32,7 @@ The server requires the following environment variables:
 ```json
 "BitbucketMCP": {
       "type": "local",
-      "command":[ "/Users/dmtr/.local/bin/uv",
+      "command":[ "uv",
         "run",
         "--with",
         "atlassian-python-api",
@@ -40,7 +40,7 @@ The server requires the following environment variables:
         "mcp[cli]",
         "mcp",
         "run",
-        "/Users/dmtr/proj/python/bitbucket_mcp/server.py"
+        "server.py"
       ],
       "environment": {
         "BITBUCKET_WORKSPACE": "bmat-music",
@@ -58,5 +58,4 @@ The server requires the following environment variables:
 * `bitbucket_get_commits` - Retrieve commit history
 * `bitbucket_get_file_content` - Get raw file content
 * `bitbucket_create_pr` - Create pull requests
-
 
