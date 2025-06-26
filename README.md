@@ -17,11 +17,29 @@ This project provides an implementation of the Model Context Protocol (MCP) serv
 * `mcp` library
 * `uv` for project management
 
-## Usage
+## Configuration example
 
-1. Install the required libraries: `pip install atlassian-bitbucket-cloud mcp json logging`
-2. Set the following environment variables:
-	* `APP_USERNAME`: Your Bitbucket app username
-	* `APP_PASSWORD`: Your Bitbucket app password
-	* `BITBUCKET_WORKSPACE`: The name of your Bitbucket workspace
-3. Run the tool: `mcp dev server.py`
+```json
+"BitbucketMCP": {
+      "type": "local",
+      "command":[ "/Users/dmtr/.local/bin/uv",
+        "run",
+        "--with",
+        "atlassian-python-api",
+        "--with",
+        "mcp[cli]",
+        "mcp",
+        "run",
+        "/Users/dmtr/proj/python/bitbucket_mcp/server.py"
+      ],
+      "environment": {
+        "BITBUCKET_WORKSPACE": "bmat-music",
+        "APP_USERNAME": "username",
+        "APP_PASSWORD": "password"
+      }
+      }
+}
+```
+
+
+
