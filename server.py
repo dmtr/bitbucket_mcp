@@ -413,6 +413,33 @@ class BitbucketCodeSearch:
             logger.error("Failed to fetch file content: %s", response.text)
             raise Exception(f"Failed to fetch file content: {response.status_code} - {response.text}")
 
+    def bitbucket_create_pr(self, repo_slug: str, branch_name: str, title: str, description: str, destination: str = "master") -> bool:
+        """
+        Create a pull request in the specified repository.
+        Args:
+            repo_slug: The slug of the repository where the PR will be created
+            branch_name: The name of the source branch for the PR
+            title: The title of the pull request
+            description: The description of the pull request
+            destination: The destination branch for the PR (default is "master")
+        Returns:
+            True if PR is created successfully, False otherwise
+        """
+        data = {"title": title, "source": {"branch": {"name": branch_name}}, "destination": {"branch": {"name": destination}}, "description": description}
+        result = self.client.post(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests",
+            json=data,
+            headers={
+                "Accept": "application/json",
+            },
+            advanced_mode=True,
+        )
+        if result.status_code == 201:
+            return True
+        else:
+            print("Failed to create PR, status_code", result.status_code, "message", result.text)
+            return False
+
 
 mcp = FastMCP("BitbucketMCP")
 
@@ -666,6 +693,40 @@ def bitbucket_get_file_content(
         return content
     except Exception as e:
         return f"Error retrieving file content: {str(e)}"
+
+
+@mcp.prompt()
+def bitbucket_create_pr_prompt() -> str:
+    return """This tool allows you to create a pull request in a Bitbucket repository.
+           You need to provide the repository slug, branch name, title, description, and optionally the destination branch.
+           The tool will return a message indicating the success or failure of the pull request creation."""
+
+
+@mcp.tool()
+def bitbucket_create_pr(
+    repo_slug: str,
+    branch_name: str,
+    title: str,
+    description: str,
+    destination: str = "master",
+) -> str:
+    """
+    Create a pull request in a Bitbucket repository.
+
+    Args:
+        repo_slug: The slug of the repository where the PR will be created
+        branch_name: The name of the source branch for the PR
+        title: The title of the pull request
+        description: The description of the pull request
+        destination: The destination branch for the PR (default is "master")
+    Returns:
+        A string indicating the success or failure of the pull request creation
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    if bitbucket_tool.bitbucket_create_pr(repo_slug, branch_name, title, description, destination):
+        return f"Pull request created successfully in repository '{repo_slug}' from branch '{branch_name}' to '{destination}'."
+    else:
+        return f"Failed to create pull request in repository '{repo_slug}' from branch '{branch_name}' to '{destination}'."
 
 
 if __name__ == "__main__":
