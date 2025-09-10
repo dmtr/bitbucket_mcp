@@ -34,16 +34,10 @@ The server requires the following environment variables:
       "type": "local",
       "command":[ "uv",
         "run",
-        "--with",
-        "atlassian-python-api",
-        "--with",
-        "mcp[cli]",
-        "mcp",
-        "run",
         "server.py"
       ],
       "environment": {
-        "BITBUCKET_WORKSPACE": "bmat-music",
+        "BITBUCKET_WORKSPACE": "test_workspace",
         "APP_USERNAME": "username",
         "APP_PASSWORD": "password"
       }

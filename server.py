@@ -1,3 +1,8 @@
+#!/usr/bin/env uv run
+# /// script
+# dependencies = ["atlassian-python-api", "mcp[cli]"]
+# ///
+
 # server.py
 import argparse
 import json
