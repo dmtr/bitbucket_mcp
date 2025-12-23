@@ -12,6 +12,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from atlassian.bitbucket.cloud import Cloud
+
 from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
@@ -417,6 +418,23 @@ class BitbucketCodeSearch:
         if "values" in response:
             return response["values"]
         return []
+
+    def get_pull_request(self, repo_slug: str, pull_request_id: int) -> Dict[str, Any]:
+        """
+        Retrieve a single pull request by its ID.
+
+        Args:
+            repo_slug: The slug of the repository.
+            pull_request_id: The numeric ID of the pull request.
+        Returns:
+            Pull request object dictionary, or empty dict if not found.
+        """
+        logger.info("Fetching pull request %s for repository %s", pull_request_id, repo_slug)
+        response = self.client.get(f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests/{pull_request_id}")
+        if response:
+            return response
+        return {}
+
     def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
         """
         Get the raw content of a file from a repository.
@@ -787,6 +805,34 @@ def bitbucket_get_pull_requests(
     if not results:
         return "No pull requests found."
     return json.dumps(results)
+
+
+@mcp.prompt()
+def bitbucket_get_pull_request_prompt() -> str:
+    return """This tool retrieves a single pull request by its numeric ID.
+           Provide the repository slug and pull request ID. Returns a JSON object.
+        """
+
+
+@mcp.tool()
+def bitbucket_get_pull_request(
+    repo_slug: str,
+    pull_request_id: int,
+) -> str:
+    """
+    Retrieve a single pull request.
+
+    Args:
+        repo_slug: The slug of the repository.
+        pull_request_id: The numeric ID of the pull request.
+    Returns:
+        A JSON string representing the pull request object, or an empty JSON object if not found.
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    result = bitbucket_tool.get_pull_request(repo_slug, pull_request_id)
+    if not result:
+        return "{}"
+    return json.dumps(result)
 
 
 if __name__ == "__main__":
