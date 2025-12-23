@@ -435,6 +435,29 @@ class BitbucketCodeSearch:
             return response
         return {}
 
+    def get_pull_request_diff(self, repo_slug: str, pull_request_id: int) -> str:
+        """
+        Get the diff for a pull request.
+
+        Note: The API returns a 302 redirect to the actual diff endpoint,
+        but the requests library follows redirects automatically.
+
+        Args:
+            repo_slug: The slug of the repository.
+            pull_request_id: The numeric ID of the pull request.
+        Returns:
+            The diff as a string, or an error message if not found.
+        """
+        logger.info("Fetching diff for pull request %s in repository %s", pull_request_id, repo_slug)
+        response = self.client.get(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests/{pull_request_id}/diff",
+            advanced_mode=True,
+        )
+        if response and response.status_code == 200:
+            return response.text
+        else:
+            return f"Error retrieving diff: status code {response.status_code if response else 'unknown'}"
+
     def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
         """
         Get the raw content of a file from a repository.
@@ -833,6 +856,31 @@ def bitbucket_get_pull_request(
     if not result:
         return "{}"
     return json.dumps(result)
+
+
+@mcp.prompt()
+def bitbucket_get_pull_request_diff_prompt() -> str:
+    return """This tool retrieves the diff for a pull request by its numeric ID.
+           Provide the repository slug and pull request ID. Returns the diff as plain text.
+        """
+
+
+@mcp.tool()
+def bitbucket_get_pull_request_diff(
+    repo_slug: str,
+    pull_request_id: int,
+) -> str:
+    """
+    Get the diff for a pull request.
+
+    Args:
+        repo_slug: The slug of the repository.
+        pull_request_id: The numeric ID of the pull request.
+    Returns:
+        The diff as a string showing the changes in the pull request.
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    return bitbucket_tool.get_pull_request_diff(repo_slug, pull_request_id)
 
 
 if __name__ == "__main__":
