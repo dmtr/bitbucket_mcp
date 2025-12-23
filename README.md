@@ -52,4 +52,7 @@ The server requires the following environment variables:
 * `bitbucket_get_commits` - Retrieve commit history
 * `bitbucket_get_file_content` - Get raw file content
 * `bitbucket_create_pr` - Create pull requests
+* `bitbucket_get_pull_requests` - List pull requests for a repository
+* `bitbucket_get_pull_request` - Retrieve a single pull request by ID
+* `bitbucket_get_pull_request_diff` - Get the diff for a pull request
 
