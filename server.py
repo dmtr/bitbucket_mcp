@@ -394,6 +394,29 @@ class BitbucketCodeSearch:
 
         return all_results
 
+    def get_pull_requests(self, repo_slug: str, state: Optional[str] = None, page: int = 1, pagelen: int = 50) -> List[Dict[str, Any]]:
+        """
+        List pull requests for a repository.
+
+        Args:
+            repo_slug: The slug of the repository.
+            state: Optional pull request state filter (e.g., "OPEN", "MERGED", "DECLINED").
+            page: Page number for pagination.
+            pagelen: Number of results per page.
+        Returns:
+            List of pull request objects.
+        """
+        params = {"pagelen": pagelen, "page": page}
+        if state:
+            params["state"] = state
+        logger.info("Fetching pull requests page %s for repository %s", page, repo_slug)
+        response = self.client.get(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests",
+            params=params,
+        )
+        if "values" in response:
+            return response["values"]
+        return []
     def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
         """
         Get the raw content of a file from a repository.
@@ -732,6 +755,38 @@ def bitbucket_create_pr(
         return f"Pull request created successfully in repository '{repo_slug}' from branch '{branch_name}' to '{destination}'."
     else:
         return f"Failed to create pull request in repository '{repo_slug}' from branch '{branch_name}' to '{destination}'."
+
+
+@mcp.prompt()
+def bitbucket_get_pull_requests_prompt() -> str:
+    return """This tool allows you to list pull requests for a Bitbucket repository.
+           You can optionally filter by state (e.g., OPEN, MERGED, DECLINED).
+           The tool returns a JSON list of pull request objects."""
+
+
+@mcp.tool()
+def bitbucket_get_pull_requests(
+    repo_slug: str,
+    state: Optional[str] = None,
+    page: int = 1,
+    pagelen: int = 50,
+) -> str:
+    """
+    List pull requests for a repository.
+
+    Args:
+        repo_slug: The slug of the repository.
+        state: Optional pull request state filter (e.g., "OPEN", "MERGED", "DECLINED").
+        page: Page number for pagination.
+        pagelen: Number of results per page.
+    Returns:
+        A JSON string representing the list of pull request objects.
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    results = bitbucket_tool.get_pull_requests(repo_slug, state, page, pagelen)
+    if not results:
+        return "No pull requests found."
+    return json.dumps(results)
 
 
 if __name__ == "__main__":
