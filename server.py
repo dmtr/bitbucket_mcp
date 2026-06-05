@@ -458,6 +458,28 @@ class BitbucketCodeSearch:
         else:
             return f"Error retrieving diff: status code {response.status_code if response else 'unknown'}"
 
+    def get_pull_request_comments(self, repo_slug: str, pull_request_id: int, page: int = 1, pagelen: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get comments for a pull request.
+
+        Args:
+            repo_slug: The slug of the repository.
+            pull_request_id: The numeric ID of the pull request.
+            page: Page number for pagination.
+            pagelen: Number of results per page.
+        Returns:
+            List of comment objects, or empty list if not found.
+        """
+        params = {"pagelen": pagelen, "page": page}
+        logger.info("Fetching pull request comments (page %s) for PR %s in repository %s", page, pull_request_id, repo_slug)
+        response = self.client.get(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests/{pull_request_id}/comments",
+            params=params,
+        )
+        if "values" in response:
+            return response["values"]
+        return []
+
     def get_file_content(self, repo_slug: str, commit: str, path: str) -> str:
         """
         Get the raw content of a file from a repository.
@@ -881,6 +903,39 @@ def bitbucket_get_pull_request_diff(
     """
     bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
     return bitbucket_tool.get_pull_request_diff(repo_slug, pull_request_id)
+
+
+@mcp.prompt()
+def bitbucket_get_pull_request_comments_prompt() -> str:
+    return """This tool retrieves comments for a pull request by its numeric ID.
+           Provide the repository slug and pull request ID. Returns a JSON list of comment objects.
+           Each comment includes fields like id, user, content, created_on, updated_on, etc.
+        """
+
+
+@mcp.tool()
+def bitbucket_get_pull_request_comments(
+    repo_slug: str,
+    pull_request_id: int,
+    page: int = 1,
+    pagelen: int = 50,
+) -> str:
+    """
+    Get comments for a pull request.
+
+    Args:
+        repo_slug: The slug of the repository.
+        pull_request_id: The numeric ID of the pull request.
+        page: Page number for pagination.
+        pagelen: Number of results per page.
+    Returns:
+        A JSON string representing the list of comment objects.
+    """
+    bitbucket_tool = BitbucketCodeSearch(workspace_name=os.environ.get("BITBUCKET_WORKSPACE", ""))
+    results = bitbucket_tool.get_pull_request_comments(repo_slug, pull_request_id, page, pagelen)
+    if not results:
+        return "No comments found."
+    return json.dumps(results)
 
 
 if __name__ == "__main__":
