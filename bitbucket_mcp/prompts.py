@@ -152,4 +152,12 @@ Use it before fetching the diff of a large pull request.
 Provide the repository slug and pull request ID. Returns a JSON list of comment objects.
 Each comment includes fields like id, user, content, created_on, updated_on, etc.
 """,
+    "bitbucket_post_pr_comment": """This tool posts a comment on a Bitbucket pull request.
+Provide the repository slug, pull request ID, and the comment text (Markdown).
+Omit file_path/line to post a general PR comment; provide them (and optionally
+line_type: "ADDED" (default), "REMOVED", or "CONTEXT") to anchor an inline
+comment to a diff line. ADDED/CONTEXT anchor to the new side, REMOVED to the
+old side. The tool returns a message with the comment's web permalink on
+success, or the API error on failure.
+""",
 }

@@ -407,6 +407,87 @@ class BitbucketClient:
         )
         return response.get("values", [])
 
+    def create_pull_request_comment(
+        self,
+        repo_slug: str,
+        pull_request_id: int,
+        content: str,
+        file_path: Optional[str] = None,
+        line: Optional[int] = None,
+        line_type: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Post a comment on a pull request.
+
+        Without *file_path*/*line* this creates a general PR comment.
+        With them it creates an **inline** comment anchored to a diff line.
+
+        Bitbucket's diff anchor semantics:
+
+        * ``line_type`` ``"ADDED"`` (default) or ``"CONTEXT"`` anchors to the
+          new side of the diff → ``inline.to``.
+        * ``line_type`` ``"REMOVED"`` anchors to the old side → ``inline.from``.
+
+        Args:
+            repo_slug: The slug of the repository.
+            pull_request_id: The numeric ID of the pull request.
+            content: The comment body (Markdown). Passed through as
+                ``content.raw``.
+            file_path: Path of the file an inline comment anchors to.
+            line: Diff line number the inline comment anchors to.
+            line_type: ``"ADDED"``, ``"REMOVED"`` or ``"CONTEXT"``.
+                Defaults to ``"ADDED"``. Unknown values fall back to ``"ADDED"``.
+
+        Returns:
+            Dict with ``success`` bool and ``data`` / ``error``.
+
+        If *file_path* is given without *line* the anchor is dropped and a
+        general comment is posted instead (a warning is logged).
+        """
+        data: dict[str, Any] = {"content": {"raw": content}}
+
+        if file_path is not None and line is not None:
+            lt = (line_type or "ADDED").upper()
+            inline: dict[str, Any] = {"path": file_path}
+            if lt == "REMOVED":
+                inline["from"] = line
+            else:
+                inline["to"] = line
+            data["inline"] = inline
+        elif file_path is not None and line is None:
+            logger.warning(
+                "file_path given without line for PR %s in %s; "
+                "posting a general comment instead",
+                pull_request_id,
+                repo_slug,
+            )
+
+        logger.info(
+            "Posting comment on PR %s in %s (inline=%s)",
+            pull_request_id,
+            repo_slug,
+            "inline" in data,
+        )
+        result = self.client.post(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests/{pull_request_id}/comments",
+            json=data,
+            headers={"Accept": "application/json"},
+            advanced_mode=True,
+        )
+        if result.status_code == 201:
+            return {"success": True, "data": result.json()}
+        logger.error(
+            "Failed to post comment: %s %s",
+            result.status_code,
+            result.text,
+        )
+        return {
+            "success": False,
+            "error": (
+                f"Failed to post comment (status {result.status_code}): "
+                f"{result.text}"
+            ),
+        }
+
     def create_pull_request(
         self,
         repo_slug: str,

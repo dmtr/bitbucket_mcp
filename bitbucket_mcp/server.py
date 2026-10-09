@@ -459,6 +459,68 @@ def bitbucket_get_pull_request_diffstat(
     )
 
 
+@bitbucket_tool("create_pull_request_comment")
+def bitbucket_post_pr_comment(
+    repo_slug: str,
+    pull_request_id: int,
+    content: str,
+    file_path: Optional[str] = None,
+    line: Optional[int] = None,
+    line_type: Optional[str] = None,
+) -> str:
+    """
+    Post a comment on a Bitbucket pull request.
+
+    Omit file_path/line to post a general PR comment; provide them to anchor
+    an inline comment to a diff line. `content` is Markdown.
+
+    Args:
+        repo_slug: The slug of the repository.
+        pull_request_id: The numeric ID of the pull request.
+        content: The comment text (Markdown).
+        file_path: Optional path of the file for an inline comment.
+        line: Diff line number an inline comment anchors to.
+        line_type: "ADDED" (default), "REMOVED", or "CONTEXT". ADDED/CONTEXT
+            anchor to the new side of the diff; REMOVED to the old side.
+    Returns:
+        A string indicating success (with the comment's web permalink) or
+        failure with the API error message.
+    """
+    result = _call(
+        "create_pull_request_comment",
+        "Failed to post comment.",
+        repo_slug,
+        pull_request_id,
+        content,
+        file_path=file_path,
+        line=line,
+        line_type=line_type,
+    )
+
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return result
+
+    if isinstance(data, dict) and "success" in data:
+        if data["success"]:
+            payload = data.get("data") or {}
+            link = ""
+            links = payload.get("links", {})
+            if isinstance(links, dict):
+                html = links.get("html", {})
+                if isinstance(html, dict):
+                    link = html.get("href", "")
+            suffix = f": {link}" if link else ""
+            return (
+                f"Comment posted on pull request #{pull_request_id} "
+                f"in repository '{repo_slug}'{suffix}."
+            )
+        return data.get("error", "Failed to post comment.")
+
+    return result
+
+
 @bitbucket_tool("get_pull_request_comments")
 def bitbucket_get_pull_request_comments(
     repo_slug: str,
