@@ -140,6 +140,13 @@ Provide the repository slug and pull request ID. Returns a JSON object.
 """,
     "bitbucket_get_pull_request_diff": """This tool retrieves the diff for a pull request by its numeric ID.
 Provide the repository slug and pull request ID. Returns the diff as plain text.
+Lock files are excluded by default and the output is capped at `max_chars`; use `paths`
+to fetch specific files. Notes at the end ("[bitbucket-mcp] ...") list every file left out.
+""",
+    "bitbucket_get_pull_request_diffstat": """This tool lists the files changed by a pull request.
+Provide the repository slug and pull request ID. Returns JSON with totals and, per file,
+its path, status (added, removed, modified, renamed, ...) and lines added/removed.
+Use it before fetching the diff of a large pull request.
 """,
     "bitbucket_get_pull_request_comments": """This tool retrieves comments for a pull request by its numeric ID.
 Provide the repository slug and pull request ID. Returns a JSON list of comment objects.

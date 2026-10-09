@@ -22,6 +22,7 @@ bitbucket_mcp/
 ├── server.py            # FastMCP instance + plugin-style tool/prompt registration
 ├── client.py            # BitbucketClient class (unified pagination, shared instance)
 ├── credentials.py       # mask_credentials() utility
+├── diff_filter.py       # Per-file diff splitting/filtering for the PR diff tool
 ├── config.py            # BitbucketConfig dataclass + env-var validation
 └── prompts.py           # SYNTAX_RULES + TOOL_PROMPTS dictionary
 ```
@@ -88,5 +89,6 @@ Alternatively, you can still use the backward-compatible shim:
 * `bitbucket_create_pr` - Create pull requests
 * `bitbucket_get_pull_requests` - List pull requests for a repository
 * `bitbucket_get_pull_request` - Retrieve a single pull request by ID
-* `bitbucket_get_pull_request_diff` - Get the diff for a pull request
+* `bitbucket_get_pull_request_diff` - Get the diff for a pull request. Lock files are excluded and the output is capped at 50,000 chars by default; use `paths` / `exclude` / `max_chars` to choose files. Skipped files are listed at the end.
+* `bitbucket_get_pull_request_diffstat` - List the files changed by a pull request, with status and line counts
 * `bitbucket_get_pull_request_comments` - Get comments for a pull request

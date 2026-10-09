@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional
 from mcp.server.fastmcp import FastMCP
 
 from bitbucket_mcp.client import get_client
+from bitbucket_mcp.diff_filter import DEFAULT_MAX_CHARS
 from bitbucket_mcp.prompts import TOOL_PROMPTS
 
 logger = logging.getLogger(__name__)
@@ -398,19 +399,61 @@ def bitbucket_get_pull_request(
 def bitbucket_get_pull_request_diff(
     repo_slug: str,
     pull_request_id: int,
+    paths: Optional[list[str]] = None,
+    exclude: Optional[list[str]] = None,
+    max_chars: int = DEFAULT_MAX_CHARS,
 ) -> str:
     """
-    Get the diff for a pull request.
+    Get the diff for a pull request, optionally limited to some files.
+
+    For large PRs, call bitbucket_get_pull_request_diffstat first, then fetch
+    the files you need with `paths`.
+
+    Args:
+        repo_slug: The slug of the repository.
+        pull_request_id: The numeric ID of the pull request.
+        paths: Glob patterns (e.g. ["src/app/*.py", "README.md"]) matched against the
+            file path or file name; only matching files are returned.
+        exclude: Glob patterns of files to drop. Defaults to lock files (*.lock,
+            package-lock.json, ...) unless `paths` is given; pass [] to keep everything.
+        max_chars: Size budget for the file diffs (default 50000; 0 = no limit).
+            Files that don't fit are skipped whole and listed at the end; the
+            closing notes come on top of this budget.
+    Returns:
+        The diff as a string. Lines starting with "[bitbucket-mcp]" at the end
+        list any files that were skipped, excluded, or omitted for size.
+    """
+    return _call(
+        "get_pull_request_diff",
+        "Error retrieving diff.",
+        repo_slug,
+        pull_request_id,
+        paths=paths,
+        exclude=exclude,
+        max_chars=max_chars,
+    )
+
+
+@bitbucket_tool("get_pull_request_diffstat")
+def bitbucket_get_pull_request_diffstat(
+    repo_slug: str,
+    pull_request_id: int,
+) -> str:
+    """
+    List the files changed by a pull request, with line counts.
+
+    Cheap overview to decide which files to read with bitbucket_get_pull_request_diff.
 
     Args:
         repo_slug: The slug of the repository.
         pull_request_id: The numeric ID of the pull request.
     Returns:
-        The diff as a string showing the changes in the pull request.
+        JSON with files_changed, lines_added, lines_removed, and a `files` list of
+        {path, status, lines_added, lines_removed[, old_path]}.
     """
     return _call(
-        "get_pull_request_diff",
-        "Error retrieving diff.",
+        "get_pull_request_diffstat",
+        "{}",
         repo_slug,
         pull_request_id,
     )

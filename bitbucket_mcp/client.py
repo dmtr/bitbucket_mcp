@@ -24,6 +24,7 @@ from atlassian.bitbucket.cloud import Cloud
 
 from bitbucket_mcp.config import BitbucketConfig
 from bitbucket_mcp.credentials import mask_credentials
+from bitbucket_mcp.diff_filter import DEFAULT_MAX_CHARS, filter_diff
 
 logger = logging.getLogger(__name__)
 
@@ -298,18 +299,29 @@ class BitbucketClient:
         )
         return response if response else {}
 
-    def get_pull_request_diff(self, repo_slug: str, pull_request_id: int) -> str:
-        """Get the diff for a pull request.
+    def get_pull_request_diff(
+        self,
+        repo_slug: str,
+        pull_request_id: int,
+        paths: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None,
+        max_chars: int = DEFAULT_MAX_CHARS,
+    ) -> str:
+        """Get the diff for a pull request, filtered per file.
 
         The API returns a 302 redirect to the actual diff endpoint; the
-        requests library follows redirects automatically.
+        requests library follows redirects automatically.  Filtering happens
+        locally because query params are lost on that redirect.
 
         Args:
             repo_slug: The slug of the repository.
             pull_request_id: The numeric ID of the pull request.
+            paths: Glob patterns; when given, only matching files are returned.
+            exclude: Glob patterns of files to drop (see :func:`filter_diff`).
+            max_chars: Size budget for the returned diff; ``0`` disables it.
 
         Returns:
-            The diff as a string, or an error message.
+            The filtered diff as a string, or an error message.
         """
         logger.info("Fetching diff for PR %s in %s", pull_request_id, repo_slug)
         response = self._fetch_page(
@@ -318,9 +330,51 @@ class BitbucketClient:
             advanced_mode=True,
         )
         if response and response.status_code == 200:
-            return response.text
+            return filter_diff(response.text, paths=paths, exclude=exclude, max_chars=max_chars)
         status = response.status_code if response else "unknown"
         return f"Error retrieving diff: status code {status}"
+
+    def get_pull_request_diffstat(
+        self,
+        repo_slug: str,
+        pull_request_id: int,
+        max_page: int = MAX_PAGE,
+    ) -> dict[str, Any]:
+        """Summarize the files changed by a pull request.
+
+        Pagination follows the absolute ``next`` links rather than a page
+        counter, because the endpoint redirects and drops query params.
+
+        Args:
+            repo_slug: The slug of the repository.
+            pull_request_id: The numeric ID of the pull request.
+            max_page: Maximum number of pages to fetch.
+
+        Returns:
+            Dict with totals and one compact entry per changed file.
+        """
+        logger.info("Fetching diffstat for PR %s in %s", pull_request_id, repo_slug)
+        response = self._fetch_page(
+            f"/repositories/{self.workspace_name}/{repo_slug}/pullrequests/{pull_request_id}/diffstat",
+            {"pagelen": 500},
+        )
+        entries: list[dict[str, Any]] = list(response.get("values", []))
+        pages = 1
+        while next_url := response.get("next"):
+            if pages >= max_page:
+                logger.warning("Reached maximum page limit of %s", max_page)
+                break
+            response = self.client.get(next_url, absolute=True)
+            entries.extend(response.get("values", []))
+            pages += 1
+
+        files = [_compact_diffstat_entry(entry) for entry in entries]
+        return {
+            "files_changed": len(files),
+            "lines_added": sum(f["lines_added"] for f in files),
+            "lines_removed": sum(f["lines_removed"] for f in files),
+            "files": files,
+        }
 
     def get_pull_request_comments(
         self,
@@ -445,6 +499,21 @@ def reset_client() -> None:
     """Discard the cached client (useful for testing)."""
     global _client
     _client = None
+
+
+def _compact_diffstat_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Reduce a Bitbucket diffstat entry to the fields useful for reviewing."""
+    old_path = (entry.get("old") or {}).get("path")
+    new_path = (entry.get("new") or {}).get("path")
+    compact: dict[str, Any] = {
+        "path": new_path or old_path,
+        "status": entry.get("status"),
+        "lines_added": entry.get("lines_added") or 0,
+        "lines_removed": entry.get("lines_removed") or 0,
+    }
+    if old_path and new_path and old_path != new_path:
+        compact["old_path"] = old_path
+    return compact
 
 
 def _mask_search_results(results: list[dict[str, Any]]) -> None:

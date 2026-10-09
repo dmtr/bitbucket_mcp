@@ -16,6 +16,7 @@ bitbucket-mcp = "bitbucket_mcp.__main__:main"
 dev = [
     "black>=25.1.0",
     "ipython>=9.3.0",
+    "pytest>=9.1.1",
 ]
 
 [build-system]
