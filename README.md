@@ -47,9 +47,10 @@ Just add an entry to the `TOOL_PROMPTS` dict in `prompts.py`. The prompt is auto
 
 The server requires the following environment variables:
 * `BITBUCKET_WORKSPACE` - Your Bitbucket workspace name
-* `APP_USERNAME` - Bitbucket username
-* `APP_PASSWORD` - Bitbucket password or app password
+* `BITBUCKET_ACCESS_TOKEN` - Bitbucket workspace access token
 * `BITBUCKET_URL` - (Optional) Bitbucket API URL, defaults to `https://api.bitbucket.org/`
+
+> **Note:** Bitbucket app passwords are deprecated. Use a [workspace access token](https://support.atlassian.com/bitbucket-cloud/docs/workspace-access-tokens/) (`BITBUCKET_ACCESS_TOKEN`) instead of `APP_USERNAME`/`APP_PASSWORD`.
 
 ## Configuration Example
 
@@ -59,8 +60,7 @@ The server requires the following environment variables:
       "command": ["uv", "run", "bitbucket-mcp"],
       "environment": {
         "BITBUCKET_WORKSPACE": "test_workspace",
-        "APP_USERNAME": "username",
-        "APP_PASSWORD": "password"
+        "BITBUCKET_ACCESS_TOKEN": "access_token"
       }
 }
 ```
@@ -73,8 +73,7 @@ Alternatively, you can still use the backward-compatible shim:
       "command": ["uv", "run", "server.py"],
       "environment": {
         "BITBUCKET_WORKSPACE": "test_workspace",
-        "APP_USERNAME": "username",
-        "APP_PASSWORD": "password"
+        "BITBUCKET_ACCESS_TOKEN": "access_token"
       }
 }
 ```

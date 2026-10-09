@@ -42,8 +42,7 @@ class BitbucketClient:
         self.config = config
         self._client = Cloud(
             url=config.url,
-            username=config.app_username,
-            password=config.app_password,
+            token=config.access_token,
             backoff_and_retry=True,
         )
         self._workspace = self._client.workspaces.get(config.workspace)

@@ -12,14 +12,12 @@ class BitbucketConfig:
 
     Attributes:
         workspace: Name of the Bitbucket workspace.
-        app_username: Bitbucket username / app key.
-        app_password: Bitbucket app password.
+        access_token: Bitbucket workspace access token.
         url: Bitbucket Cloud API URL.
     """
 
     workspace: str
-    app_username: str
-    app_password: str
+    access_token: str
     url: str = "https://api.bitbucket.org/"
 
     @classmethod
@@ -30,16 +28,14 @@ class BitbucketConfig:
             ValueError: If any required environment variable is missing.
         """
         workspace = os.environ.get("BITBUCKET_WORKSPACE", "")
-        username = os.environ.get("APP_USERNAME", "")
-        password = os.environ.get("APP_PASSWORD", "")
+        access_token = os.environ.get("BITBUCKET_ACCESS_TOKEN", "")
         url = os.environ.get("BITBUCKET_URL", "https://api.bitbucket.org/")
 
         missing = [
             name
             for name, val in (
                 ("BITBUCKET_WORKSPACE", workspace),
-                ("APP_USERNAME", username),
-                ("APP_PASSWORD", password),
+                ("BITBUCKET_ACCESS_TOKEN", access_token),
             )
             if not val
         ]
@@ -50,7 +46,6 @@ class BitbucketConfig:
 
         return cls(
             workspace=workspace,
-            app_username=username,
-            app_password=password,
+            access_token=access_token,
             url=url,
         )
